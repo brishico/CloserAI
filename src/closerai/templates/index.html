@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trigger Editor</title>
+</head>
+<body>
+  <h1>Edit Triggers</h1>
+  <textarea id="json" style="width:100%;height:60vh;"></textarea><br/>
+  <button id="save">Save</button>
+  <div id="message"></div>
+
+  <script>
+    async function load() {
+      const resp = await fetch('/api/triggers');
+      const data = await resp.json();
+      document.getElementById('json').value = JSON.stringify(data, null, 2);
+    }
+    async function save() {
+      const txt = document.getElementById('json').value;
+      let data;
+      try {
+        data = JSON.parse(txt);
+      } catch (e) {
+        alert("Invalid JSON: " + e);
+        return;
+      }
+      const resp = await fetch('/api/triggers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+      });
+      const res = await resp.json();
+      document.getElementById('message').innerText = 
+        res.status === 'ok' ? 'Saved!' : 'Error: ' + res.message;
+      setTimeout(()=> document.getElementById('message').innerText = '', 3000);
+    }
+    document.getElementById('save').addEventListener('click', save);
+    load();
+  </script>
+</body>
+</html>
