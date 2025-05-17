@@ -1,37 +1,32 @@
 import json
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 
-def create_app(config_path: str = "config/triggers.json"):
-    app = Flask(__name__, 
-                template_folder=Path(__file__).parent / "templates")
+CONFIG_PATH = Path("config/triggers.json")
 
-    triggers_file = Path(config_path)
-
-    def load_triggers():
-        if not triggers_file.exists():
-            triggers_file.parent.mkdir(parents=True, exist_ok=True)
-            triggers_file.write_text("{}")
-        return json.loads(triggers_file.read_text())
-
-    def save_triggers(data):
-        triggers_file.write_text(json.dumps(data, indent=2))
+def create_app():
+    app = Flask(
+        __name__,
+        template_folder="templates",
+        static_folder="static",
+    )
+    CORS(app)
 
     @app.route("/")
     def index():
-        return render_template("index.html")
+        return render_template("editor.html")
 
-    @app.route("/api/triggers", methods=["GET"])
-    def get_triggers():
-        return jsonify(load_triggers())
-
-    @app.route("/api/triggers", methods=["POST"])
-    def post_triggers():
-        try:
-            data = request.get_json()
-            save_triggers(data)
-            return jsonify({"status": "ok"})
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 400
+    @app.route("/api/triggers", methods=["GET", "POST"])
+    def triggers():
+        if request.method == "POST":
+            data = request.get_json() or {}
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            CONFIG_PATH.write_text(json.dumps(data, indent=2))
+            return jsonify(status="ok", triggers=data)
+        else:
+            if not CONFIG_PATH.exists():
+                return jsonify(triggers={})
+            return jsonify(triggers=json.loads(CONFIG_PATH.read_text()))
 
     return app

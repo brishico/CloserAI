@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CloserAI Trigger Editor</title>
+  <style>
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+    th, td { border: 1px solid #ccc; padding: 0.5em; }
+    input { width: 100%; box-sizing: border-box; }
+    button { margin-right: 0.5em; }
+  </style>
+  <script>
+    // — Load existing triggers from the Flask API
+    async function loadTriggers() {
+      try {
+        const r = await fetch("/api/triggers");
+        const { triggers } = await r.json();
+        populateTable(triggers);
+      } catch (e) {
+        showStatus("❌ Failed to load: " + e.message, "red");
+      }
+    }
+
+    // — Build the table rows from an object of { trigger: suggestion }
+    function populateTable(triggers) {
+      const tbody = document.querySelector("#triggers-table tbody");
+      tbody.innerHTML = "";
+      for (const [trig, sugg] of Object.entries(triggers)) {
+        addRow(trig, sugg);
+      }
+    }
+
+    // — Add one empty or pre-filled row
+    function addRow(trigger = "", suggestion = "") {
+      const tbody = document.querySelector("#triggers-table tbody");
+      const row = tbody.insertRow();
+      const cellA = row.insertCell();
+      const cellB = row.insertCell();
+      const cellC = row.insertCell();
+
+      const inA = document.createElement("input");
+      inA.value = trigger;
+      inA.placeholder = "Trigger word";
+      cellA.appendChild(inA);
+
+      const inB = document.createElement("input");
+      inB.value = suggestion;
+      inB.placeholder = "Suggestion text";
+      cellB.appendChild(inB);
+
+      const del = document.createElement("button");
+      del.textContent = "Delete";
+      del.onclick = () => row.remove();
+      cellC.appendChild(del);
+    }
+
+    // — Show a one-line status message below the buttons
+    function showStatus(msg, color) {
+      const st = document.querySelector("#save-status");
+      st.textContent = msg;
+      st.style.color = color;
+    }
+
+    // — Gather all non-empty rows into an object and POST it
+    async function saveTriggers() {
+      const rows = document.querySelectorAll("#triggers-table tbody tr");
+      const out = {};
+      rows.forEach(row => {
+        const t = row.cells[0].firstChild.value.trim();
+        const s = row.cells[1].firstChild.value.trim();
+        if (t && s) out[t] = s;
+      });
+
+      try {
+        const r = await fetch("/api/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(out),
+        });
+        const payload = await r.json();
+        if (payload.status === "ok") {
+          showStatus("✅ Saved!", "green");
+        } else {
+          showStatus("❌ Save failed: " + (payload.error || JSON.stringify(payload)), "red");
+        }
+      } catch (e) {
+        showStatus("❌ Error: " + e.message, "red");
+      }
+    }
+
+    window.onload = () => {
+      document.getElementById("add-row-btn").onclick = () => addRow();
+      document.getElementById("save-btn").onclick    = () => saveTriggers();
+      loadTriggers();
+    };
+  </script>
+</head>
+<body>
+  <h1>Trigger Configuration</h1>
+
+  <button id="add-row-btn">➕ Add Row</button>
+  <button id="save-btn">💾 Save</button>
+  <div id="save-status" style="margin-top:0.5em;"></div>
+
+  <table id="triggers-table">
+    <thead>
+      <tr>
+        <th>Trigger Word</th>
+        <th>Suggestion</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</body>
+</html>
