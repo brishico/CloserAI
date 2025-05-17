@@ -1,23 +1,23 @@
-# src/closerai/cli.py
 import click
 from .audio import listen
 
 @click.group()
 def cli():
-    """CloserAI: real-time coaching for sales calls."""
+    """CloserAI command‐line interface."""
     pass
 
 @cli.command()
-def greet():
-    """Show welcome message."""
-    click.echo("👋 Welcome to CloserAI!")
-
-@cli.command()
-@click.option("--keyword", "-k", multiple=True,
-              help="Additional keywords to watch for.")
-def listen_cmd(keyword):
-    """Start listening on your mic and suggest talking points."""
-    listen(keywords=list(keyword))
+@click.option(
+    "--no-gpt",
+    is_flag=True,
+    help="Disable dynamic ChatGPT suggestions"
+)
+def listen_cmd(no_gpt):
+    """
+    Start listening on mic + loopback.
+    Pass --no-gpt to suppress GPT suggestions.
+    """
+    listen(disable_gpt=no_gpt)
 
 if __name__ == "__main__":
     cli()
