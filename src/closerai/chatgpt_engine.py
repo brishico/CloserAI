@@ -1,75 +1,65 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 import os
-import threading
-import queue
-import httpx
 from openai import OpenAI
-
-# Initialize HTTPX client to avoid proxies kwarg issues
-_httpx_client = httpx.Client()
-
-# Initialize OpenAI client with explicit HTTPX client
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    http_client=_httpx_client
-)
 
 class ChatGPTEngine:
     """
-    Asynchronous wrapper around OpenAI's ChatCompletion API using a background thread.
+    Wraps the OpenAI client to maintain a short context window of
+    the last N utterances (agent + customer) and then ask GPT
+    for a coaching suggestion based on that history.
     """
-    def __init__(self, system_prompt: str = None):
-        # Default system prompt if not provided
-        self.system_prompt = system_prompt or (
+    def __init__(self, max_history: int = 5):
+        # Load API key from .env
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY not found in environment")
+        self.client = OpenAI(api_key=api_key)
+
+        self.system_prompt = (
             "You are a real-time sales coach. "
-            "When the customer says something, suggest one actionable talking point "
-            "to guide the call forward."
+            "Based on the recent conversation, provide a concise, actionable suggestion "
+            "to help the salesperson advance the deal."
         )
-        # Internal queue for transcripts and their response queues
-        self._q = queue.Queue()
-        # Start the background worker thread
-        threading.Thread(target=self._worker, daemon=True).start()
 
-    def _worker(self):
-        while True:
-            # Dequeue a transcript and the queue to put the suggestion into
-            transcript, out_q = self._q.get()
-            suggestion = None
-            try:
-                # Call the OpenAI ChatCompletion API
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user",   "content": transcript}
-                    ],
-                    max_tokens=60,
-                    temperature=0.7,
-                )
-                # Extract the suggestion
-                suggestion = response.choices[0].message.content.strip()
-            except Exception as e:
-                # Print errors for visibility
-                print(f"[GPT error] {e}")
-            # Put the result (or None) back to the caller
-            out_q.put(suggestion)
+        # Mixed history of the last N lines: entries like "Agent: …" or "Customer: …"
+        self.history: list[str] = []
+        self.max_history = max_history
 
-    def get(self, transcript: str, timeout: float = 3.0):
+    def _trim(self):
+        # Keep only the most recent max_history entries
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history :]
+
+    def record_agent(self, agent_text: str):
+        """Call this whenever the salesperson speaks."""
+        self.history.append(f"Agent: {agent_text}")
+        self._trim()
+
+    def record_customer(self, customer_text: str):
+        """Call this whenever the customer speaks."""
+        self.history.append(f"Customer: {customer_text}")
+        self._trim()
+
+    def suggest(self) -> str:
         """
-        Non-blocking fetch for a suggestion.
-
-        Args:
-            transcript: The customer's utterance to send to GPT.
-            timeout:   How many seconds to wait before giving up.
-
-        Returns:
-            A string suggestion, or None if no response within the timeout.
+        Build a GPT prompt from system + history, then return GPT's suggestion.
         """
-        out_q = queue.Queue()
-        self._q.put((transcript, out_q))
-        try:
-            return out_q.get(timeout=timeout)
-        except queue.Empty:
-            return None
+        context = "\n".join(self.history)
+        messages = [
+            {"role": "system",  "content": self.system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"Here is the recent conversation:\n{context}\n\n"
+                    "Based on that, what is one concise suggestion the salesperson "
+                    "should make next to advance the deal?"
+                ),
+            },
+        ]
+
+        response = self.client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=60,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content.strip()

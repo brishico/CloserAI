@@ -14,7 +14,7 @@ if not openai.api_key:
 
 # ChatGPT Stuff
 static_engine = SuggestionEngine()
-gpt_engine    = ChatGPTEngine()
+gpt_engine    = ChatGPTEngine(max_history=6)
 
 # Replace these with the indices you found:
 MIC_INDEX   = 1   # your physical mic
@@ -78,6 +78,7 @@ def listen(keywords=None, disable_gpt=False):
                         txt = json.loads(cust_rec.Result()).get("text", "")
                         if txt:
                             print(f"[Customer said] {txt}")
+                            gpt_engine.record_customer(txt)
 
                             # 1) static JSON suggestion
                             if suggestion := static_engine.get(txt):
@@ -95,6 +96,7 @@ def listen(keywords=None, disable_gpt=False):
                         txt = json.loads(mic_rec.Result()).get("text", "")
                         if txt:
                             print(f"[You said] {txt}")
+                            gpt_engine.record_agent(txt)
 
                 sd.sleep(100)  # small sleep to yield control
 
