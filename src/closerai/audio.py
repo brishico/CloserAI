@@ -3,15 +3,15 @@ import json
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 
-# ← your Realtek mic index
-DEVICE_INDEX = 19  
+# Realtek Mic Array (4-channel input)
+DEVICE_INDEX = 1  
 
 q = queue.Queue()
 
 def callback(indata, frames, time, status):
     if status:
         print(f"[Audio status] {status}")
-    # indata is shape (frames, 2) for stereo; take channel 0 only
+    # indata.shape == (frames, 4); take only channel 0
     mono = indata[:, 0].copy().tobytes()
     q.put(mono)
 
@@ -31,8 +31,8 @@ def listen(keywords=None):
         samplerate=16000,
         blocksize=8000,
         dtype="int16",
-        channels=2,            # record stereo
-        device=DEVICE_INDEX,   # select your mic
+        channels=4,            # record all 4 channels
+        device=DEVICE_INDEX,   # use index 1
         callback=callback
     ):
         print("🎙 Listening... (Ctrl+C to stop)")
