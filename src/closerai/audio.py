@@ -1,66 +1,78 @@
-import queue
-import json
+import queue, json
 import sounddevice as sd
 from vosk import Model, KaldiRecognizer
 from .suggestion_engine import SuggestionEngine
+from .suggestion_engine import SuggestionEngine
+from .chatgpt_engine import ChatGPTEngine
+from dotenv import load_dotenv
+load_dotenv()                # ← loads C:\AI\CloserAI\.env
+import os
+import openai
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise RuntimeError("Missing OPENAI_API_KEY in environment")
+
+# ChatGPT Stuff
+static_engine = SuggestionEngine()
+gpt_engine    = ChatGPTEngine()
+
+# Replace these with the indices you found:
+MIC_INDEX   = 1   # your physical mic
+LOOP_INDEX  = 9   # VB-Cable in Recording devices
 
 engine = SuggestionEngine()
 
+# Queues for the two streams
+mic_q  = queue.Queue()
+cust_q = queue.Queue()
 
-# Configure your microphone device index here (from sd.query_devices())
-DEVICE_INDEX = 1  # Realtek Mic Array index
-
-# Queue to pass audio data from callback to recognizer loop
-q = queue.Queue()
-
-
-def callback(indata, frames, time, status):
-    """Audio callback: down-mix multi-channel input to mono and enqueue."""
-    if status:
-        print(f"[Audio status] {status}")
-    # indata shape: (frames, channels)
+def mic_callback(indata, frames, time, status):
+    if status: print(f"[Mic status] {status}")
     mono = indata[:, 0].copy().tobytes()
-    q.put(mono)
+    mic_q.put(mono)
 
+def cust_callback(indata, frames, time, status):
+    if status: print(f"[Cust status] {status}")
+    mono = indata[:, 0].copy().tobytes()
+    cust_q.put(mono)
 
 def listen(keywords=None):
-    """
-    Open mic stream, perform offline ASR with Vosk, and detect keywords.
-
-    :param keywords: list of lower-cased strings to trigger suggestions.
-    """
-    if keywords is None:
-        keywords = ["pricing", "budget", "next steps"]
-
-    # Load Vosk model (ensure model directory exists)
+    # Load a single model for both—Vosk is light enough
     model = Model("models/vosk-model-small-en-us-0.15")
-    rec = KaldiRecognizer(model, 16000)
+    mic_rec  = KaldiRecognizer(model, 16000)
+    cust_rec = KaldiRecognizer(model, 16000)
 
-    # Use InputStream to receive NumPy arrays
-    with sd.InputStream(
-        samplerate=16000,
-        blocksize=8000,
-        dtype="int16",
-        channels=4,          # record all input channels
-        device=DEVICE_INDEX, # select your microphone
-        callback=callback
-    ):
-        print("🎙 Listening... (Ctrl+C to stop)")
+    with sd.InputStream(samplerate=16000, blocksize=8000,
+                        dtype="int16", channels=4,
+                        device=MIC_INDEX, callback=mic_callback), \
+         sd.InputStream(samplerate=16000, blocksize=8000,
+                        dtype="int16", channels=2,
+                        device=LOOP_INDEX, callback=cust_callback):
+
+        print("🎙 Listening (Mic + Customer)… Ctrl+C to stop")
         try:
             while True:
-                data = q.get()
-                if rec.AcceptWaveform(data):
-                    result = json.loads(rec.Result())
-                    text = result.get("text", "")
-                    if text:
-                        print(f"[You said] {text}")
-                        suggestion = engine.get(text)
-                        if suggestion:
-                            print(f"[Suggestion] {suggestion}")
-                else:
-                    partial = json.loads(rec.PartialResult()).get("partial", "")
-                    if partial:
-                        # overwrite line with partial transcript
-                        print(f"[…] {partial}", end="\r")
+                # 1) Process customer audio for suggestions
+                while not cust_q.empty():
+                    data = cust_q.get()
+                    if cust_rec.AcceptWaveform(data):
+                        txt = json.loads(cust_rec.Result()).get("text","")
+                        if txt:
+                            print(f"[Customer said] {txt}")
+                            # 1) static JSON suggestion
+                            if suggestion := static_engine.get(txt):
+                                print(f"[Suggestion] {suggestion}")
+                            # 2) dynamic GPT suggestion (if static didn't fire, or even in addition)
+                            if gpt_sugg := gpt_engine.get(txt):
+                                print(f"💡 GPT Suggestion: {gpt_sugg}")
+
+                # 2) (Optional) you can still log your own mic if desired
+                while not mic_q.empty():
+                    data = mic_q.get()
+                    if mic_rec.AcceptWaveform(data):
+                        txt = json.loads(mic_rec.Result()).get("text","")
+                        if txt:
+                            print(f"[You said] {txt}")
         except KeyboardInterrupt:
-            print("\nStopped listening.")
+            print("\nStopped.")

@@ -12,5 +12,5 @@ tqdm==4.67.1
 urllib3==2.4.0
 vosk==0.3.45
 websockets==15.0.1
-openai
+openai==1.0.0
 python-dotenv
