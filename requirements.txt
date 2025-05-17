@@ -2,7 +2,6 @@ certifi==2025.4.26
 cffi==1.17.1
 charset-normalizer==3.4.2
 click==8.1.7
--e git+https://github.com/brishico/CloserAI.git@4a3ae473190f432c201a06a61b99b7e3cb19c5a1#egg=closerai
 colorama==0.4.6
 idna==3.10
 pycparser==2.22
@@ -13,3 +12,5 @@ tqdm==4.67.1
 urllib3==2.4.0
 vosk==0.3.45
 websockets==15.0.1
+openai
+python-dotenv
