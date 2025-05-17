@@ -1,24 +1,41 @@
 import json
-from collections import defaultdict
+from pathlib import Path
+from typing import Optional
 
 class SuggestionEngine:
-    def __init__(self, path="config/suggestions.json"):
-        with open(path, encoding="utf-8") as f:
-            self.map = json.load(f)
-        # track which keyword was already suggested, to avoid repeats
-        self.suggested = set()
-        # track per-keyword cycling index
-        self.indexes = defaultdict(int)
+    def __init__(self, config_path: str = "config/triggers.json"):
+        self.config_file = Path(config_path)
+        self.triggers: dict[str, str] = {}
+        self._last_mtime: float = 0.0
+        self._load()  # initial load
 
-    def get(self, transcript: str):
-        """Return one suggestion for the first matching keyword in transcript."""
-        t = transcript.lower()
-        for kw, messages in self.map.items():
-            if kw in t and kw not in self.suggested:
-                # pick the next message in rotation
-                idx = self.indexes[kw] % len(messages)
-                suggestion = messages[idx]
-                self.indexes[kw] += 1
-                self.suggested.add(kw)
+    def _load(self):
+        """Read the JSON file into memory."""
+        if not self.config_file.exists():
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            self.config_file.write_text("{}")
+        data = json.loads(self.config_file.read_text())
+        # normalize keys to lowercase
+        self.triggers = {k.lower(): v for k, v in data.items()}
+        self._last_mtime = self.config_file.stat().st_mtime
+
+    def _maybe_reload(self):
+        """Reload if the file has been modified since last load."""
+        try:
+            mtime = self.config_file.stat().st_mtime
+        except FileNotFoundError:
+            mtime = 0.0
+        if mtime > self._last_mtime:
+            self._load()
+
+    def get(self, text: str) -> Optional[str]:
+        """
+        Return the first matching trigger suggestion, reloading
+        the config if it’s changed since last time.
+        """
+        self._maybe_reload()
+        txt = text.lower()
+        for keyword, suggestion in self.triggers.items():
+            if keyword in txt:
                 return suggestion
         return None
