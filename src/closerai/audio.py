@@ -6,13 +6,15 @@ from vosk import Model, KaldiRecognizer
 
 q = queue.Queue()
 
+DEVICE_INDEX = 19  # Microphone (Realtek HD Audio Mic input)
+
 def callback(indata, frames, time, status):
-    """This is called (from a separate thread) for each audio block."""
     if status:
         print(f"[Audio status] {status}")
-    # convert to raw bytes and enqueue
-    q.put(bytes(indata))
-
+    # indata.shape == (frames, 2) for stereo; take channel 0 only
+    mono = indata[:, 0].copy().tobytes()
+    q.put(mono)
+    
 def listen(keywords=None):
     """
     Open mic stream, run Vosk recognizer, and detect keywords.
@@ -25,8 +27,15 @@ def listen(keywords=None):
     model = Model("models/vosk-model-small-en-us-0.15")  
     rec = KaldiRecognizer(model, 16000)
 
-    with sd.RawInputStream(samplerate=16000, blocksize=8000, dtype="int16",
-                           channels=1, callback=callback):
+ def listen(keywords=None):
+    # ... (rest of function unchanged) ...
+    with sd.RawInputStream(
+            samplerate=16000,
+            blocksize=8000,
+            dtype="int16",
+            channels=2,            # record stereo
+            device=DEVICE_INDEX,   # use index 19
+            callback=callback):
         print("🎙  Listening...  (press Ctrl+C to stop)")
         try:
             while True:
