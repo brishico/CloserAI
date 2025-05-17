@@ -10,12 +10,12 @@ class SuggestionEngine:
         self._load()  # initial load
 
     def _load(self):
-        """Read the JSON file into memory."""
+        """Read the JSON file into memory (creating it if missing)."""
         if not self.config_file.exists():
             self.config_file.parent.mkdir(parents=True, exist_ok=True)
             self.config_file.write_text("{}")
         data = json.loads(self.config_file.read_text())
-        # normalize keys to lowercase
+        # normalize keys to lowercase for matching
         self.triggers = {k.lower(): v for k, v in data.items()}
         self._last_mtime = self.config_file.stat().st_mtime
 
